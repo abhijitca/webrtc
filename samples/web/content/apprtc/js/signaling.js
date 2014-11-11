@@ -17,11 +17,6 @@ var apprtc = apprtc || {};
 (function() {
 
 var Log = apprtc.Log;
-// TODO(tkchin): maybe serve this through app engine instead.
-var WSS_POST_URL = "https://apprtc-ws.webrtc.org:8089/";
-var WSS_URL = "wss://apprtc-ws.webrtc.org:8089/ws";
-//var WSS_POST_URL = 'http://localhost:8089/';
-//var WSS_URL = 'ws://localhost:8089/ws';
 
 /*
  * Channel over which signaling data is sent. Creates a websocket for
@@ -29,15 +24,18 @@ var WSS_URL = "wss://apprtc-ws.webrtc.org:8089/ws";
  * web socket server and app engine instance as required.
  */
 var SignalingChannel = apprtc.SignalingChannel = function(
-    roomId, clientId, onSignalingMessage) {
+    roomId, clientId, onSignalingMessage, wss, wss_tls) {
   this.roomId = roomId;
   this.clientId = clientId;
   this.onSignalingMessage = onSignalingMessage;
-  this.socket = new WebSocket(WSS_URL);
+  var wss_url = (wss_tls ? 'wss' : 'ws') + '://' + wss + '/ws';
+  this.socket = new WebSocket(wss_url);
   this.socket.onopen = this.onSocketOpen.bind(this);
   this.socket.onmessage = this.onSocketMessage.bind(this);
   this.socket.onerror = this.onSocketError.bind(this);
   this.socket.onclose = this.onSocketClose.bind(this);
+
+  this.wss_post_url = (wss_tls ? 'https' : 'http') + '://' + wss + '/';
 
   // Used to store messages before web socket is open.
   this.pendingMessages = [];
@@ -82,7 +80,7 @@ SignalingChannel.prototype.sendMessage = function(message) {
 SignalingChannel.prototype.postMessage = function(message) {
   var msgString = JSON.stringify(message);
   Log.info('WSS POST C->S: ' + msgString);
-  var path = WSS_POST_URL + this.roomId + '/' + this.clientId;
+  var path = this.wss_post_url + this.roomId + '/' + this.clientId;
   var xhr = new XMLHttpRequest();
   xhr.open('POST', path, true);
   // WSS looks as POST data.
@@ -142,7 +140,9 @@ var SignalingManager = apprtc.SignalingManager = function(config) {
   this.channel = new SignalingChannel(
       this.config.roomId,
       this.config.clientId,
-      this.onSignalingMessage.bind(this));
+      this.onSignalingMessage.bind(this),
+      this.config.wss,
+      this.config.wss_tls);
   // Used to store pending messages received before peer connection is created.
   this.pendingMessages = [];
 };

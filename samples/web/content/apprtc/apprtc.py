@@ -391,7 +391,7 @@ class WSSMainPage(webapp2.RequestHandler):
       user_agent = self.request.headers['User-Agent']
       stun_server = get_default_stun_server(user_agent)
     return stun_server
-  
+
   def get_pc_config(self):
     stun_server = self.get_stun_server()
     turn_server = self.request.get('ts')
@@ -400,6 +400,12 @@ class WSSMainPage(webapp2.RequestHandler):
     ts_pwd = self.request.get('tp')
     ice_transports = self.request.get('it')
     return make_pc_config(stun_server, turn_server, ts_pwd, ice_transports)
+
+  def get_wss(self):
+    return self.request.get('wss', 'apprtc-ws.webrtc.org:8089')
+
+  def get_wss_tls(self):
+    return self.request.get('wss_tls', 'true')
 
   def get_turn_url(self, user):
     turn_server = self.request.get('ts')
@@ -578,6 +584,8 @@ class WSSMainPage(webapp2.RequestHandler):
       'offer_constraints': json.dumps(self.get_offer_constraints()),
       'media_constraints': json.dumps(self.get_media_constraints()),
       'turn_url': self.get_turn_url(user),
+      'wss': self.get_wss(),
+      'wss_tls': self.get_wss_tls(),
       'stereo': self.get_stereo(),
       'opusfec': self.get_opusfec(),
       'opusmaxpbr': self.get_opus_max_playback_rate(),
@@ -639,7 +647,7 @@ class WSSMainPage(webapp2.RequestHandler):
         logging.info('Redirecting visitor to base URL to ' + redirect)
         return
       target_page = self.get_main_page()
-    
+
     # Get room or return error.
     room, user, is_initiator = self.get_room_if_available(room_key)
     if not room:
