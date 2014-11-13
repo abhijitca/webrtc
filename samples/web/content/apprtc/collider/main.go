@@ -6,7 +6,7 @@
 package main
 
 import (
-	"collider"
+	"collider/collider"
 	"flag"
 )
 
