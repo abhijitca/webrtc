@@ -6,8 +6,8 @@
 package main
 
 import (
-	"collider"
 	"flag"
+	"github.com/googlechrome/webrtc/samples/web/content/apprtc/collider/collider"
 )
 
 var tls = flag.Bool("tls", true, "whether TLS is used")

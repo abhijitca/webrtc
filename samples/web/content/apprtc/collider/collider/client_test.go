@@ -6,7 +6,7 @@
 package collider
 
 import (
-	"collidertest"
+	collidertest "github.com/googlechrome/webrtc/samples/web/content/apprtc/collider/test"
 	"testing"
 )
 
