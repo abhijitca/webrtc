@@ -104,6 +104,8 @@ var AppController = function(loadingParams) {
     this.roomLink_ = '';
     this.roomSelection_ = null;
     this.localStream_ = null;
+
+    this.analytics_ = new Analytics(this.loadingParams_.roomServer || '');
     this.remoteVideoResetTimer_ = null;
 
     // If the params has a roomId specified, we should connect to that room
@@ -164,8 +166,14 @@ AppController.prototype.createCall_ = function() {
 
   this.call_.onsignalingstatechange =
       this.infoBox_.updateInfoDiv.bind(this.infoBox_);
-  this.call_.oniceconnectionstatechange =
-      this.infoBox_.updateInfoDiv.bind(this.infoBox_);
+  this.call_.oniceconnectionstatechange =  function() {
+    this.infoBox_.updateInfoDiv();
+    states = this.call_.getPeerConnectionStates()
+    if (states && states['iceConnectionState'] == 'connected') {
+      this.analytics_.reportImpression(EventType.ICE_CONNECTION_STATE_CONNECTED,
+				       this.loadingParams_.roomId);
+    }
+  }.bind(this);
   this.call_.onnewicecandidate =
       this.infoBox_.recordIceCandidateTypes.bind(this.infoBox_);
 

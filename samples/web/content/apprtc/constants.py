@@ -41,6 +41,7 @@ class EventType:
   # Event signifying that a room enters the state of having exactly
   # two participants.
   ROOM_SIZE_2='room_size_2'
+  ICE_CONNECTION_STATE_CONNECTED='ice_connection_state_connected'
 
 class LogField:
   pass

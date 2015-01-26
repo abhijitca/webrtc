@@ -139,6 +139,7 @@ module.exports = function(grunt) {
           // Destination: [source files]
           'samples/web/content/apprtc/js/compiled/apprtc.debug.js': [
             'samples/web/content/apprtc/js/adapter.js',
+            'samples/web/content/apprtc/js/analytics.js',
             'samples/web/content/apprtc/js/appcontroller.js',
             'samples/web/content/apprtc/js/call.js',
             'samples/web/content/apprtc/js/infobox.js',
