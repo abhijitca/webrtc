@@ -1,43 +1,19 @@
 # Copyright 2014 Google Inc. All Rights Reserved.
 
-import unittest
-import webtest
-
-import analytics
-import apprtc
 import datetime
 import json
 import time
-from constants import LogField
+import unittest
+import webtest
+
 from google.appengine.api import memcache
 from google.appengine.ext import testbed
 
-class ReplaceFunction(object):
-  """Makes it easier to replace a function in a class or module."""
-  def __init__(self, obj, function_name, new_function):
-    self.obj = obj
-    self.function_name = function_name
-    self.old_function = getattr(self.obj, self.function_name)
-    setattr(self.obj, self.function_name, new_function)
+import analytics
+import apprtc
+from constants import LogField
+from test_util import CapturingFunction, ReplaceFunction
 
-  def __del__(self):
-    setattr(self.obj, self.function_name, self.old_function)
-
-class CapturingFunction(object):
-  """Captures the last arguments called on a function."""
-  def __init__(self, retValue=None):
-    self.retValue = retValue
-    self.lastArgs = None
-    self.lastKwargs = None
-
-  def __call__(self, *args, **kwargs):
-    self.lastArgs = args
-    self.lastKwargs = kwargs
-
-    if callable(self.retValue):
-      return self.retValue()
-
-    return self.retValue
 
 class FakeBigQuery(object):
   """Handles long function calls to the Google API client."""

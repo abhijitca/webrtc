@@ -1,13 +1,18 @@
 # Copyright 2014 Google Inc. All Rights Reserved.
 
+import json
+import logging
+import time
 import unittest
 import webtest
 
-import apprtc
-import analytics
-import json
 from google.appengine.api import memcache
 from google.appengine.ext import testbed
+
+import apprtc
+import analytics
+import constants
+from test_util import CapturingFunction, ReplaceFunction
 
 
 class AppRtcUnitTest(unittest.TestCase):
@@ -40,22 +45,34 @@ class AppRtcPageHandlerTest(unittest.TestCase):
 
     self.test_app = webtest.TestApp(apprtc.app)
 
-    # Fake out event reporting.
-    def fake_mock_event(*args, **kwargs):
-      pass
-    self.oldReportEvent = analytics.report_event
-    analytics.report_event = fake_mock_event
+    self.time_now = time.time()
+
+    # Fake out event reporting and capture arguments.
+    self.reportEventReplacement = ReplaceFunction(
+        analytics,
+        'report_event',
+        CapturingFunction())
+
+    self.analyticsPageNowReplacement = ReplaceFunction(
+        apprtc.AnalyticsPage,
+        '_time',
+        self.fake_time);
 
   def tearDown(self):
     self.testbed.deactivate()
-    analytics.report_event = self.oldReportEvent
+    del self.reportEventReplacement
+    del self.analyticsPageNowReplacement
+
+  def fake_time(self):
+    return self.time_now
 
   def makeGetRequest(self, path):
     # PhantomJS uses WebKit, so Safari is closest to the thruth.
     return self.test_app.get(path, headers={'User-Agent': 'Safari'})
 
-  def makePostRequest(self, path, body=''):
-    return self.test_app.post(path, body, headers={'User-Agent': 'Safari'})
+  def makePostRequest(self, path, body='', expect_errors=False):
+    return self.test_app.post(path, body, headers={'User-Agent': 'Safari'},
+                              expect_errors=expect_errors)
 
   def verifyJoinSuccessResponse(self, response, is_initiator, room_id):
     self.assertEqual(response.status_int, 200)
@@ -124,6 +141,123 @@ class AppRtcPageHandlerTest(unittest.TestCase):
 
     self.makePostRequest('/leave/' + room_id + '/' + caller_id)
     self.makePostRequest('/leave/' + room_id + '/' + callee_id)
+
+  def testAnalyticsPage(self):
+    # self.time_ms will be the time the request is recieved by AppRTC
+    self.time_now = 11.0
+    request_time_ms = 10.0 * 1000
+    event_time_ms = 8.0 * 1000
+    # The client time (request_time) is one second behind the server
+    # time (self.time_now) so the event time, as the server sees it,
+    # should be one second ahead of the actual event time recorded by
+    # the client.
+    event_time_server_ms = 9.0 * 1000
+
+    room_id = 'foo'
+    event_type = constants.EventType.ICE_CONNECTION_STATE_CONNECTED
+
+    # Test with all optional attributes.
+    event = {
+        'event_type': event_type,
+        'event_time_ms': event_time_ms,
+        'room_id': room_id,
+        }
+
+    request = {
+        'type': 'event',
+        'request_time_ms': request_time_ms,
+        'content': json.dumps(event)
+        }
+
+    response = self.makePostRequest('/a/', body=json.dumps(request))
+    response_body = json.loads(response.body)
+
+    self.assertEqual(constants.RESPONSE_SUCCESS, response_body['result'])
+
+    expectedArgs = (event_type, room_id, event_time_server_ms, event_time_ms)
+
+    self.assertEqual(expectedArgs, analytics.report_event.lastArgs)
+
+    # Test without optional attributes.
+    event = {
+        'event_type': event_type,
+        'event_time_ms': event_time_ms,
+        }
+
+    request = {
+        'type': 'event',
+        'request_time_ms': request_time_ms,
+        'content': json.dumps(event)
+        }
+
+    response = self.makePostRequest('/a/', body=json.dumps(request))
+    response_body = json.loads(response.body)
+
+    self.assertEqual(constants.RESPONSE_SUCCESS, response_body['result'])
+
+    expectedArgs = (event_type, None, event_time_server_ms, event_time_ms)
+
+    self.assertEqual(expectedArgs, analytics.report_event.lastArgs)
+
+
+  def testAnalyticsPageFail(self):
+    # Test empty body.
+    response = self.makePostRequest('/a/', expect_errors=True)
+    response_body = json.loads(response.body)
+    self.assertEqual(400, response.status_code)
+    self.assertEqual(constants.RESPONSE_ERROR, response_body['result'])
+
+    # Test missing individual required attributes.
+    room_id = 'foo'
+    event_type = constants.EventType.ICE_CONNECTION_STATE_CONNECTED
+    time_ms = 1337
+
+    # Fully populated event and request.
+    event = {
+        'event_type': event_type,
+        'event_time_ms': time_ms,
+        'room_id': room_id,
+        }
+
+    request = {
+        'type': 'event',
+        'request_time_ms': time_ms,
+        'content': json.dumps(event)
+        }
+
+    # Unknown type of analytics request
+    request_unknown_type = request.copy()
+    request_unknown_type['type'] = 'crazy_brains'
+    response = self.makePostRequest(
+        '/a/', body=json.dumps(request_unknown_type), expect_errors=True)
+    response_body = json.loads(response.body)
+    self.assertEqual(400, response.status_code)
+    self.assertEqual(constants.RESPONSE_ERROR, response_body['result'])
+
+    # Missing required members of the request.
+    for member in ('type', 'request_time_ms'):
+      tmp_request = request.copy()
+      del tmp_request[member]
+      response = self.makePostRequest(
+          '/a/', body=json.dumps(tmp_request), expect_errors=True)
+      response_body = json.loads(response.body)
+      self.assertEqual(400, response.status_code)
+      self.assertEqual(constants.RESPONSE_ERROR, response_body['result'])
+
+
+    # Missing required members of the event.
+    for member in ('event_type', 'event_time_ms'):
+      tmp_request = request.copy()
+      tmp_event = event.copy()
+      del tmp_event[member]
+      tmp_request['content'] = json.dumps(tmp_event)
+      response = self.makePostRequest(
+          '/a/', body=json.dumps(tmp_request), expect_errors=True)
+      response_body = json.loads(response.body)
+      self.assertEqual(400, response.status_code)
+      self.assertEqual(constants.RESPONSE_ERROR, response_body['result'])
+
+
 
 if __name__ == '__main__':
   unittest.main()

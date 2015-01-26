@@ -15,6 +15,7 @@ import os
 import random
 import sys
 import threading
+import time
 import urllib
 
 sys.path.append(os.path.join(os.path.dirname(__file__), 'third_party'))
@@ -548,6 +549,82 @@ class ParamsPage(webapp2.RequestHandler):
     params = get_room_parameters(self.request, None, None, None)
     self.response.write(json.dumps(params))
 
+class AnalyticsPage(webapp2.RequestHandler):
+  def _write_response(self, result, message=None):
+    response = {'result': result}
+    if message is not None:
+      response['message'] = message
+
+    self.response.write(json.dumps(response));
+
+  def _write_invalid_request(self):
+    self.error(400)
+    self._write_response(constants.RESPONSE_ERROR, 'Invalid request')
+
+  def _time(self):
+    """Overridden in unit tests to validate time calculations."""
+    return time.time()
+
+  def post(self):
+    try:
+      msg = json.loads(self.request.body)
+    except ValueError:
+      return self._write_invalid_request()
+
+    valid_request = False
+    type = msg.get('type')
+    request_time_ms =  msg.get('request_time_ms')
+    if request_time_ms is not None and type == 'event':
+      valid_request = self._handle_event(msg.get('content'),
+                                         request_time_ms)
+    if not valid_request:
+      self._write_invalid_request()
+    else:
+      self._write_response(constants.RESPONSE_SUCCESS)
+
+    return
+
+
+  def _handle_event(self, content, request_time_ms):
+    try:
+      imp = json.loads(content)
+    except ValueError:
+      return False
+
+    event_type = imp.get('event_type')
+    if event_type is None:
+      return False
+
+    room_id = imp.get('room_id')
+
+    # Time that the event occurred according to the client clock.
+    try:
+      client_event_time_ms = float(imp.get('event_time_ms'))
+    except (TypeError, ValueError):
+      return False
+
+
+    # Time the request was sent based on the client clock.
+    try:
+      request_time_ms = float(request_time_ms)
+    except (TypeError, ValueError):
+      return False
+
+    # Server time at the time of request.
+    receive_time_ms = self._time() * 1000.
+
+    # Calculated event time based on the differences of the request
+    # times. This method ignores the latency of sending the request to
+    # the server.
+    event_time_ms = client_event_time_ms + (receive_time_ms - request_time_ms)
+
+    analytics.report_event(event_type,
+                           room_id,
+                           event_time_ms,
+                           client_event_time_ms)
+
+    return True
+
 app = webapp2.WSGIApplication([
     ('/', MainPage),
     ('/leave/(\w+)/(\w+)', LeavePage),
@@ -555,4 +632,5 @@ app = webapp2.WSGIApplication([
     ('/join/(\w+)', JoinPage),
     ('/r/(\w+)', RoomPage),
     ('/params', ParamsPage),
+    ('/a/', AnalyticsPage),
 ], debug=True)
